@@ -1,10 +1,8 @@
-# Decentralized Marketmaker
-
+Decentralized Marketmaker
+----------------------------
 Enables you to create options on assets.
 
-Based on Chainlink Pricefeeds
-
-Can be resolved completly decentralized using Chainlink Datafeeds & Historical Price Functions
+Options are resolved completly decentralized using Chainlink Datafeeds & Historical Price Functions
 
 Hardhat Testing:
 
@@ -16,16 +14,20 @@ npx hardhat node
 npx hardhat run scripts/deploy.js
 ```
 
-Option-Maker parameters / guide
+----------------------------
 
-\_typeOfBet:
+**Option Maker Parameters**
+
+
+
+**\_typeOfBet:**
 
 4 Kinds of bets:
 
-        long,
-        short,
-        longStrikePrice,
-        shortStrikePrice
+-long,
+-short,
+-longStrikePrice,
+-shortStrikePrice
 
 Long, the OptionMaker predicts that the asset goes up. If it goes up/ 0% priceChange, the optionMaker wins the option
 
@@ -41,19 +43,19 @@ Option 2, longStrikePrice. I create the bet, and I specify the StrikePrice as 10
 
 Why do this? So Traders can create bets that cover very unlikely scenarios and generate premiums for low risk.
 
-\_timeInHours
+**\_timeInHours**
 
 how long will an option run upon accepting?
 
 This decides how long an Option should run upon accepting. There is a minimum ( 3hours) and a maximum (2 years).
 
-\_stockPicked
+**\_stockPicked**
 
 This is the asset that the OptionMaker wants to bet on. Only initalized stocks are available.
 
 mapping(uint256 => string) public stockPriceFeedsNAME; has all the current active stocks in string format. ( TO DO, add a simplre view function to list all)
 
-\_payoutRatio
+**\_payoutRatio**
 
 This decides the ratio that the OptionMaker and OptionTaker pays funds.
 
@@ -69,6 +71,17 @@ The taker would win 1000 + get back their initial 10 if they are sucessful. (min
 
 The maker would win 10 + get back their initial 1000 if they are sucessful ( minus fees)
 
-ExpirationDate:
+**ExpirationDate:**
 
 a UNIX timestamp uint at which the option should no longer be available to accept. can be left as 0.
+
+
+**Options can be cancelled manually any time.**
+
+**Options that have been accepted are locked in!**
+
+---------------------
+
+
+
+
