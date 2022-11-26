@@ -54,7 +54,7 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         address betMaker;
         address betTaker;
         betType typeOfBet;
-        int256 priceAtAccepting;
+        int256 strikePrice;
         int256 priceAtResolving;
         uint256 PayoutRatio;
         uint256 betAmount;
@@ -272,9 +272,6 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
             "Bet has expired!"
         );
 
-        //@TODO mint NFT, give the bet as metadata.
-        //@TODO NFT Owner gets winning upon resolvement.
-        //@TODO array logic still in there for easy view functions.
         _safeMint(msg.sender, _betIDToAccept);
 
         runningBets[_betIDToAccept].betTaker = msg.sender;
@@ -285,7 +282,7 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
             runningBets[_betIDToAccept].typeOfBet == betType.long ||
             runningBets[_betIDToAccept].typeOfBet == betType.short
         ) {
-            runningBets[_betIDToAccept].priceAtAccepting = getLatestPrice(
+            runningBets[_betIDToAccept].strikePrice = getLatestPrice(
                 runningBets[_betIDToAccept].stockPicked
             );
         }
@@ -333,7 +330,7 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         );
 
         int256 priceChange = runningBets[_betIdToResolve].priceAtResolving -
-            runningBets[_betIdToResolve].priceAtAccepting;
+            runningBets[_betIdToResolve].strikePrice;
 
         //@notice resolve who won the bet.
 
@@ -392,8 +389,6 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
             ] += runningBets[_betIdToResolve].betAmount;
         }
 
-        //@TODO burn NFT.
-
         _burn(_betIdToResolve);
         resolvedBets.push(runningBets[_betIdToResolve]);
         delete runningBets[_betIdToResolve];
@@ -436,7 +431,7 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         runningBets[_betIdToResolve].priceAtResolving = price;
 
         int256 priceChange = runningBets[_betIdToResolve].priceAtResolving -
-            runningBets[_betIdToResolve].priceAtAccepting;
+            runningBets[_betIdToResolve].strikePrice;
 
         //@notice resolve who won the bet.
 
@@ -667,13 +662,42 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         return betsResolved;
     }
 
-    //@TODO to fill up the json
     function tokenURI(uint256 _tokenId)
         public
         view
         override
         returns (string memory)
     {
+        Bet memory betMetadata = optionNfts[_tokenId];
+
+        string memory betCreator = Strings.toHexString(
+            uint256(uint160(betMetadata.betMaker)),
+            20
+        );
+        string memory expirationDate = Strings.toString(
+            betMetadata.timeToResolveBet
+        );
+        string memory strikePrice = Strings.toString(
+            uint256(betMetadata.strikePrice)
+        );
+        string memory nftBetType;
+
+        if (uint256(betMetadata.typeOfBet) == 0) {
+            nftBetType = "long";
+        }
+
+        if (uint256(betMetadata.typeOfBet) == 1) {
+            nftBetType = "short";
+        }
+
+        if (uint256(betMetadata.typeOfBet) == 0) {
+            nftBetType = "longStrikePrice";
+        }
+
+        if (uint256(betMetadata.typeOfBet) == 0) {
+            nftBetType = "shortStrikePrice";
+        }
+
         string memory json = Base64.encode(
             bytes(
                 string(
@@ -681,14 +705,19 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
                         '{ "description": "Alethia Option:",',
                         '"attributes": [ ',
                         '{"trait_type": "tokenId", "value":',
+                        _tokenId,
                         "}, ",
                         '{"trait_type": "betType", "value":',
+                        nftBetType,
                         "}, ",
                         '{"trait_type": "strikeprice", "value":',
+                        strikePrice,
                         "}, ",
                         '{"trait_type": "expirationDate", "value":',
+                        expirationDate,
                         "}, ",
                         '{"trait_type": "Option-Underwriter", "value":',
+                        betCreator,
                         "}",
                         "]}"
                     )
