@@ -393,6 +393,7 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         resolvedBets.push(runningBets[_betIdToResolve]);
         delete runningBets[_betIdToResolve];
         delete optionNfts[_betIdToResolve];
+        delete expirationOfBet[_betIdToResolve];
     }
 
     //@notice adminVersion with supplied roundID, in case the bet is very old before resolvement
@@ -494,6 +495,7 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         resolvedBets.push(runningBets[_betIdToResolve]);
         delete runningBets[_betIdToResolve];
         delete optionNfts[_betIdToResolve];
+        delete expirationOfBet[_betIdToResolve];
     }
 
     //------------------User-View Functions------------------
