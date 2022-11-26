@@ -2,15 +2,18 @@
 pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/LinkTokenInterface.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-contract DecentralizedOptionMakerStocks is Ownable, Pausable {
+contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
     //for stocks & gold. there are no stock datafeeds on testnet, so testing must be on AVAX Mainnet to work.
     //@dev Documentation: https://docs.chain.link/docs/avalanche-price-feeds/
 
@@ -20,7 +23,9 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
     }
     enum betType {
         long,
-        short
+        short,
+        longStrikePrice,
+        shortStrikePrice
     }
 
     enum status {
@@ -55,6 +60,7 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
         uint256 betAmount;
         uint256 betDuration;
         address betWinner;
+        //uint256 strikePrice;
     }
 
     //Payout Ratio of 100 means 1:1. A payout Ratio of 1 means 0.01 : 1 ( meaning you get 0.01 if you win your bet, vs 1 AVAX)
@@ -69,6 +75,8 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
     mapping(address => uint256) public WinningTracker;
 
     mapping(address => bool) isAdmin;
+
+    mapping(uint256 => Bet) optionNfts;
 
     Bet[] public runningBets;
     Bet[] public resolvedBets;
@@ -86,7 +94,7 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
 
     uint256 treasuryFeeAvailableToCollect;
 
-    constructor() {
+    constructor() ERC721("AlethiaOptions", "OPT") {
         //@notice our initial priceFeed initalization
         /*
         address mockTokenDataFeedONE, address mockTokenDataFeedTWO
@@ -147,7 +155,8 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
         uint256 _timeInHours,
         uint256 _stockPicked,
         uint256 _payoutRatio,
-        uint256 _expirationDate
+        uint256 _expirationDate,
+        uint256 _strikePrice
     ) external payable whenNotPaused {
         require(
             stockPriceFeedIsInitalized[_stockPicked],
@@ -165,24 +174,53 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
             "Bet is above maximum Bet Duration!"
         );
 
-        runningBets.push(
-            Bet(
-                runningBets.length,
-                _stockPicked,
-                0,
-                0,
-                status.open,
-                msg.sender,
-                address(0),
-                _typeOfBet,
-                0,
-                0,
-                _payoutRatio,
-                msg.value,
-                _timeInHours,
-                address(0)
-            )
-        );
+        if (_typeOfBet == betType.long || _typeOfBet == betType.short) {
+            runningBets.push(
+                Bet(
+                    runningBets.length,
+                    _stockPicked,
+                    0,
+                    0,
+                    status.open,
+                    msg.sender,
+                    address(0),
+                    _typeOfBet,
+                    0,
+                    0,
+                    _payoutRatio,
+                    msg.value,
+                    _timeInHours,
+                    address(0)
+                )
+            );
+        }
+
+        // options with a strike price have the priceAtAccepting pre-set.
+        if (
+            _typeOfBet == betType.longStrikePrice ||
+            _typeOfBet == betType.shortStrikePrice
+        ) {
+            runningBets.push(
+                Bet(
+                    runningBets.length,
+                    _stockPicked,
+                    0,
+                    0,
+                    status.open,
+                    msg.sender,
+                    address(0),
+                    _typeOfBet,
+                    int256(_strikePrice),
+                    0,
+                    _payoutRatio,
+                    msg.value,
+                    _timeInHours,
+                    address(0)
+                )
+            );
+        }
+
+        //if strikeprice is chosen, change priceAtAccepting. Also parse it differently.
 
         emit betCreated(
             msg.sender,
@@ -234,12 +272,24 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
             "Bet has expired!"
         );
 
+        //@TODO mint NFT, give the bet as metadata.
+        //@TODO NFT Owner gets winning upon resolvement.
+        //@TODO array logic still in there for easy view functions.
+        _safeMint(msg.sender, _betIDToAccept);
+
         runningBets[_betIDToAccept].betTaker = msg.sender;
         runningBets[_betIDToAccept].currentBetStatus = status.running;
 
-        runningBets[_betIDToAccept].priceAtAccepting = getLatestPrice(
-            runningBets[_betIDToAccept].stockPicked
-        );
+        //@assign price at accept, if not a strikeprice bet
+        if (
+            runningBets[_betIDToAccept].typeOfBet == betType.long ||
+            runningBets[_betIDToAccept].typeOfBet == betType.short
+        ) {
+            runningBets[_betIDToAccept].priceAtAccepting = getLatestPrice(
+                runningBets[_betIDToAccept].stockPicked
+            );
+        }
+
         runningBets[_betIDToAccept].timeAccepted = block.timestamp;
         runningBets[_betIDToAccept].timeToResolveBet =
             block.timestamp +
@@ -256,9 +306,11 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
         treasuryFeeAvailableToCollect += (((
             runningBets[_betIDToAccept].betAmount
         ) / 100) * rakeFee);
+
+        optionNfts[_betIDToAccept] = runningBets[_betIDToAccept];
     }
 
-    function resolveBet(uint256 _betIdToResolve) public whenNotPaused {
+    function resolveBet(uint256 _betIdToResolve) public {
         require(
             runningBets[_betIdToResolve].currentBetStatus == status.running,
             "bet isnt running!"
@@ -283,27 +335,31 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
         int256 priceChange = runningBets[_betIdToResolve].priceAtResolving -
             runningBets[_betIdToResolve].priceAtAccepting;
 
+        //@notice resolve who won the bet.
+
+        //LONG Option OR Draw
         if (runningBets[_betIdToResolve].typeOfBet == betType.long) {
             if (priceChange >= 0) {
                 runningBets[_betIdToResolve].betWinner = runningBets[
                     _betIdToResolve
                 ].betMaker;
             } else {
-                runningBets[_betIdToResolve].betWinner = runningBets[
+                runningBets[_betIdToResolve].betWinner = ownerOf(
                     _betIdToResolve
-                ].betTaker;
+                );
             }
         }
 
+        //SHORT Option
         if (runningBets[_betIdToResolve].typeOfBet == betType.short) {
             if (priceChange <= 0) {
                 runningBets[_betIdToResolve].betWinner = runningBets[
                     _betIdToResolve
                 ].betMaker;
             } else {
-                runningBets[_betIdToResolve].betWinner = runningBets[
+                runningBets[_betIdToResolve].betWinner = ownerOf(
                     _betIdToResolve
-                ].betTaker;
+                );
             }
         }
 
@@ -336,8 +392,12 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
             ] += runningBets[_betIdToResolve].betAmount;
         }
 
+        //@TODO burn NFT.
+
+        _burn(_betIdToResolve);
         resolvedBets.push(runningBets[_betIdToResolve]);
         delete runningBets[_betIdToResolve];
+        delete optionNfts[_betIdToResolve];
     }
 
     //@notice adminVersion with supplied roundID, in case the bet is very old before resolvement
@@ -378,27 +438,31 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
         int256 priceChange = runningBets[_betIdToResolve].priceAtResolving -
             runningBets[_betIdToResolve].priceAtAccepting;
 
+        //@notice resolve who won the bet.
+
+        //LONG Option OR Draw
         if (runningBets[_betIdToResolve].typeOfBet == betType.long) {
             if (priceChange >= 0) {
                 runningBets[_betIdToResolve].betWinner = runningBets[
                     _betIdToResolve
                 ].betMaker;
             } else {
-                runningBets[_betIdToResolve].betWinner = runningBets[
+                runningBets[_betIdToResolve].betWinner = ownerOf(
                     _betIdToResolve
-                ].betTaker;
+                );
             }
         }
 
+        //SHORT Option
         if (runningBets[_betIdToResolve].typeOfBet == betType.short) {
             if (priceChange <= 0) {
                 runningBets[_betIdToResolve].betWinner = runningBets[
                     _betIdToResolve
                 ].betMaker;
             } else {
-                runningBets[_betIdToResolve].betWinner = runningBets[
+                runningBets[_betIdToResolve].betWinner = ownerOf(
                     _betIdToResolve
-                ].betTaker;
+                );
             }
         }
 
@@ -431,8 +495,10 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
             ] += runningBets[_betIdToResolve].betAmount;
         }
 
+        _burn(_betIdToResolve);
         resolvedBets.push(runningBets[_betIdToResolve]);
         delete runningBets[_betIdToResolve];
+        delete optionNfts[_betIdToResolve];
     }
 
     //------------------User-View Functions------------------
@@ -599,6 +665,42 @@ contract DecentralizedOptionMakerStocks is Ownable, Pausable {
         }
 
         return betsResolved;
+    }
+
+    //@TODO to fill up the json
+    function tokenURI(uint256 _tokenId)
+        public
+        view
+        override
+        returns (string memory)
+    {
+        string memory json = Base64.encode(
+            bytes(
+                string(
+                    abi.encodePacked(
+                        '{ "description": "Alethia Option:",',
+                        '"attributes": [ ',
+                        '{"trait_type": "tokenId", "value":',
+                        "}, ",
+                        '{"trait_type": "betType", "value":',
+                        "}, ",
+                        '{"trait_type": "strikeprice", "value":',
+                        "}, ",
+                        '{"trait_type": "expirationDate", "value":',
+                        "}, ",
+                        '{"trait_type": "Option-Underwriter", "value":',
+                        "}",
+                        "]}"
+                    )
+                )
+            )
+        );
+
+        string memory output = string(
+            abi.encodePacked("data:application/json;base64,", json)
+        );
+
+        return output;
     }
 
     //------------------Chainlink Functions------------------
