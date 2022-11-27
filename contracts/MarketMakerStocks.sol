@@ -10,6 +10,7 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+//@notice DEPRECATED; See NFT Version for current contract
 contract DecentralizedOptionMakerStocks is Ownable, Pausable {
     //for stocks & gold. there are no stock datafeeds on testnet, so testing must be on AVAX Mainnet to work.
     //@dev Documentation: https://docs.chain.link/docs/avalanche-price-feeds/
