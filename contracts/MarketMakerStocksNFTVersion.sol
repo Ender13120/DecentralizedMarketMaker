@@ -288,11 +288,11 @@ contract DecentralizedOptionMakerStocks is ERC721Enumerable, Ownable, Pausable {
         }
 
         if (runningBets[_betIDToAccept].typeOfBet == betType.longStrikePrice) {
-            runningBets[_betIDToAccept].typeOfBet == betType.long;
+            runningBets[_betIDToAccept].typeOfBet = betType.long;
         }
 
         if (runningBets[_betIDToAccept].typeOfBet == betType.shortStrikePrice) {
-            runningBets[_betIDToAccept].typeOfBet == betType.short;
+            runningBets[_betIDToAccept].typeOfBet = betType.short;
         }
 
         runningBets[_betIDToAccept].timeAccepted = block.timestamp;
