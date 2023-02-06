@@ -4,6 +4,8 @@ Enables you to create options on assets.
 
 Options are resolved completly decentralized using Chainlink Datafeeds & Historical Price Functions
 
+MarketMakerStocksNFTVersion.sol is the latest version. While more gas-intensive, it offers practical equivalence to [**Options**](https://www.sec.gov/oiea/investor-alerts-bulletins/ib_introductionoptions)
+
 ----------------------------
 
 **Option Maker Parameters**
